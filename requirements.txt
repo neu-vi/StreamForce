@@ -1,0 +1,58 @@
+# Curated from what the code actually imports; the previous file was a raw
+# `pip freeze` and carried ~40 unrelated packages.
+#
+# Pinned, not floored. These are the versions this project was developed and tested
+# against. `>=` floors were tried and do not work: a fresh install resolves torch to a
+# cu130 build from PyPI, which flash-attn 2.8.3 cannot load (`libcudart.so.12: cannot
+# open shared object file`), and drags transformers 4->5, opencv 4->5 and
+# huggingface-hub 0->1 across major versions.
+#
+# transformers is 4.57.0 rather than the 4.51.3 this project was trained with: the demo's
+# optional auto-captioner defaults to Qwen3-VL, and `qwen3_vl` support only landed in
+# transformers 4.57.0. 4.57.0 was checked against the training/inference paths here --
+# project imports, all eight configs, the T5 encoder and the Wan wrappers -- and is clean.
+#
+# The `+cu128` local versions only exist on the PyTorch index, so they pin the CUDA
+# build as well as the version. Install order matters -- flash-attn is NOT listed here
+# because it builds against an already-installed torch:
+#     pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu128
+#     pip install flash-attn==2.8.3 --no-build-isolation
+#
+# Optional, both auto-detected at import and not required:
+#     flash_attn_interface  (FlashAttention 3, Hopper only; source install)
+#     sageattention
+
+torch==2.10.0+cu128
+torchvision==0.25.0+cu128
+torchaudio==2.10.0+cu128
+transformers==4.57.0
+accelerate==1.12.0
+diffusers==0.36.0
+safetensors==0.7.0
+tokenizers==0.22.2
+huggingface-hub==0.36.0
+einops==0.8.2
+omegaconf==2.3.0
+numpy==2.2.6
+opencv-python-headless==4.13.0.90
+pillow==11.3.0
+imageio==2.37.2
+imageio-ffmpeg==0.6.0
+# torchvision.io.write_video needs PyAV; it is not a torchvision dependency. Every
+# inference script, both trainers and the demo write mp4s through it. (write_video is
+# deprecated from torchvision 0.22 in favour of TorchCodec, but still present in 0.25.)
+av==16.1.0
+moviepy==2.2.1
+decord==0.6.0
+ftfy==6.3.1
+regex==2026.1.15
+tqdm==4.67.2
+wandb==0.24.1
+pandas==2.3.3
+flask==3.1.3
+flask-socketio==5.6.1
+python-socketio==5.16.1
+python-engineio==4.13.1
+simple-websocket==1.1.0
+gitpython==3.1.46
+scipy==1.15.3

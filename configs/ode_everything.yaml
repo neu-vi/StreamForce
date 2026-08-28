@@ -1,0 +1,62 @@
+generator_ckpt: <PATH_TO_TEACHER_CKPT>                  # stage 1 output
+model_name: causal_wan
+denoising_step_list:
+- 1000
+- 750
+- 500
+- 250
+- 0
+warp_denoising_step: true
+generator_task: causal_video
+generator_fsdp_wrap_strategy: size
+text_encoder_fsdp_wrap_strategy: size
+mixed_precision: true
+seed: 0
+wandb_host: WANDB_HOST
+wandb_key: WANDB_KEY
+wandb_entity: WANDB_ENTITY
+wandb_project: causvid
+wandb_name: wan_causal_ode
+sharding_strategy: hybrid_full
+lr: 2.0e-06
+beta1: 0.0
+beta2: 0.999
+wind_diverse_force_data_path: force_ode/wind_force_diverse_5K_augment
+wind_synthetic_force_data_path: force_ode/wind_force_synthetic
+point_diverse_force_data_path: force_ode/point_force_diverse_8K
+point_synthetic_force_data_path: force_ode/point_force_synthetic
+wind_diverse_force_change_data_path: force_ode/wind_force_change_diverse_5K_augment
+wind_synthetic_force_change_data_path: force_ode/wind_force_change_synthetic
+point_diverse_force_change_data_path: force_ode/point_force_change_diverse_24K
+point_synthetic_force_change_data_path: force_ode/point_force_change_synthetic
+batch_size: 2
+log_iters: 500
+log_video_iters: 100
+guide_scale: 5.0  # classifier free guidance scale
+negative_prompt: '色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，残缺的，多余的手指，画得不好的手部，画得不好的脸部，畸形的，毁容的，形态畸形的肢体，手指融合，静止不动的画面，杂乱的背景，三条腿，背景人很多，倒着走'
+dfake_gen_update_ratio: 5
+image_or_video_shape:
+- 2
+- 21
+- 48
+- 60
+- 104
+distribution_loss: ode
+trainer: ode
+gradient_checkpointing: true
+num_frame_per_block: 3
+load_raw_video: true
+model_kwargs:
+  timestep_shift: 5.0
+  controlnet_layers: 15
+i2v: true
+use_change_force: false
+all_forces: true
+gradient_accumulation_steps: 2
+diverse_synthetic_data_ratio: 2
+dlocal_global_force_ratio: 4
+dchange_no_change_ratio: 3
+# ---- Image-scope train/val split for the diverse sources (null = use all) ----
+point_diverse_split_label: train  # point diverse (+change): 'train' / 'val' / null
+wind_diverse_split_label: train   # wind diverse (+change):  'train' / 'val' / null
+start_step: 0

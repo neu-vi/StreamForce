@@ -1,0 +1,75 @@
+{
+  "_comment": "Gallery presets. Values go straight into the browser's force boxes: angle -> Angle (deg), magnitude -> Magnitude (0-1), anchor_x/anchor_y -> Anchor X/Y in 832x480 canvas pixels (y down). `latents` caps the clip for this preset only; must be a multiple of num_frame_per_block (3). Edit freely, no restart needed.",
+  "canvas": {
+    "width": 832,
+    "height": 480
+  },
+  "items": [
+    {
+      "id": "point_1",
+      "title": "White mug on a desk",
+      "file": "point_1.png",
+      "mode": "point",
+      "angle": 1.2,
+      "magnitude": 0.667,
+      "anchor_x": 372.4,
+      "anchor_y": 418.0,
+      "latents": 45,
+      "prompt": "Absolute stillness is broken as a gentle external force nudges the white mug, causing it to slide smoothly across the wooden surface of the desk, its rounded form gliding forward with quiet resistance, leaving a faint, subtle trail of motion behind it as it drifts away from the laptop’s keyboard, untouched by the woman’s hands, while she remains focused on her screen, unaware of the quiet displacement occurring just beside her."
+    },
+    {
+      "id": "point_2",
+      "title": "Traffic cones",
+      "file": "point_2.png",
+      "mode": "point",
+      "angle": 183.0,
+      "magnitude": 0.841,
+      "anchor_x": 539.6,
+      "anchor_y": 372.9,
+      "latents": 45,
+      "prompt": "Absolute stillness is broken as a single white cone, standing at the edge of the pavement, begins to shift under the influence of an unseen external force, its base sliding forward along the reddish surface while its pointed apex tilts slightly, casting a lengthening shadow that stretches toward the asphalt, where a painted arrow waits, and the rest of the line of cones remains untouched, frozen in their orderly formation, as if the world holds its breath around this one moment of motion."
+    },
+    {
+      "id": "point_3",
+      "title": "Dark red vase",
+      "file": "point_3.png",
+      "mode": "point",
+      "angle": 180.2,
+      "magnitude": 0.627,
+      "anchor_x": 548.3,
+      "anchor_y": 212.7,
+      "latents": 45,
+      "prompt": "The dark red vase, positioned on the surface of a low wooden table, is gently nudged by an unseen external force, causing it to shift slightly from its original placement. The movement is subtle, with the vase tilting slightly as it responds to the push, its glossy surface catching the dim ambient light. The surrounding space remains still, the quiet room emphasizing the delicate interaction between the force and the vase, while the rest of the scene—furniture, walls, and floor—remains undisturbed."
+    },
+    {
+      "id": "wind_1",
+      "title": "Willow-shaded tavern",
+      "file": "wind_1.png",
+      "mode": "wind",
+      "angle": 204.4,
+      "magnitude": 0.567,
+      "latents": 45,
+      "prompt": "Under a canopy of weeping willow branches, patrons in traditional robes gather around low tables beneath the shade of a gnarled tree, their laughter and clinking cups echoing through the courtyard as a breeze is present. Inside the wooden-walled tavern, figures in flowing garments converse near the open doorway, where lanterns cast a warm glow, while others mill about the threshold, some pausing to glance at the banner fluttering above that bears the character for “wine.” In the distance, mist curls around the silhouettes of mountain peaks, and the quiet rhythm of daily life continues in the neighboring courtyards, all softened by the gentle presence of wind."
+    },
+    {
+      "id": "wind_2",
+      "title": "Astronaut and flag",
+      "file": "wind_2.png",
+      "mode": "wind",
+      "angle": 323.0,
+      "magnitude": 0.685,
+      "latents": 45,
+      "prompt": "An astronaut in a bulky white spacesuit stands on the desolate lunar surface, their silhouette sharply defined against the blackness of space, as they gaze toward a tattered American flag planted in the gray regolith; the flag, its fabric rippling slightly despite the absence of atmosphere, suggests the presence of wind, while the astronaut’s helmet reflects the stark, unforgiving light of the sun, casting long shadows across the cratered terrain, and the faint outline of a lander looms in the background, a silent testament to humanity’s arrival on this alien world."
+    },
+    {
+      "id": "wind_3",
+      "title": "Girl with a pearl earring",
+      "file": "wind_3.png",
+      "mode": "wind",
+      "angle": 23.4,
+      "magnitude": 0.759,
+      "latents": 45,
+      "prompt": "A young woman with a serene, contemplative gaze turns her head slightly, her blue headscarf and golden braid gently shifting as if stirred by a breeze, while her pearl earring catches the light and her lips part in a moment of quiet expression, the dark background emphasizing the luminous quality of her skin and the texture of her clothing."
+    }
+  ]
+}

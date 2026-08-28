@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>StreamForce Demo</title>
+<link rel="stylesheet" href="/static/style.css?v=6" />
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>StreamForce Demo</h1>
+  <div id="model-status" class="pill pill-wait">loading models…</div>
+  <div id="link-status" class="pill pill-wait">connecting…</div>
+</header>
+
+<main>
+  <section class="panel panel-setup">
+    <h2>Gallery</h2>
+    <div class="gallery" id="galleryGrid"></div>
+
+    <h2>1 · Input</h2>
+
+    <label class="field">
+      <span>Image</span>
+      <div class="file-row">
+        <button id="pickImageBtn" type="button" class="file-btn">Choose file</button>
+        <div id="fileNameLabel" class="file-name">no file selected</div>
+      </div>
+      <input type="file" id="imageUpload" accept="image/*" />
+    </label>
+
+    <label class="field">
+      <span>Text prompt</span>
+      <div id="caption-bar" class="caption-bar"><i class="dot"></i><span id="caption-text">auto-caption unavailable</span></div>
+      <textarea id="prompt" rows="5" placeholder="Describe the image, or upload one and let the captioner fill this in…"></textarea>
+    </label>
+
+    <h2>2 · Force</h2>
+    <div class="field">
+      <span>Mode</span>
+      <div class="seg" id="modeSeg">
+        <button type="button" data-mode="point" class="active">Point</button>
+        <button type="button" data-mode="wind">Wind</button>
+      </div>
+      <input id="mode" type="hidden" value="point" />
+    </div>
+
+    <div class="grid2">
+      <label class="field">
+        <span>Angle (deg)</span>
+        <input id="angleInput" inputmode="decimal" value="0" />
+      </label>
+      <label class="field">
+        <span>Magnitude (0-1)</span>
+        <input id="magInput" inputmode="decimal" value="0" />
+      </label>
+      <label class="field" id="anchorXWrap">
+        <span>Anchor X</span>
+        <input id="anchorXInput" inputmode="decimal" value="416" />
+      </label>
+      <label class="field" id="anchorYWrap">
+        <span>Anchor Y</span>
+        <input id="anchorYInput" inputmode="decimal" value="240" />
+      </label>
+    </div>
+
+    <h2>3 · Run</h2>
+    <label class="field field-inline">
+      <span>Seed</span>
+      <input type="number" id="seedInput" value="0" />
+    </label>
+    <div class="buttons">
+      <button id="startBtn" class="primary" disabled>Start</button>
+      <button id="stopBtn">Stop</button>
+      <button id="saveBtn" disabled>Save mp4</button>
+    </div>
+    <label class="checkbox"><input type="checkbox" id="saveArrows" /> burn the force arrow into the
+      saved video</label>
+    <p class="hint" id="save-line"></p>
+    <h2>Diagnostics</h2>
+    <div class="buttons">
+      <a class="btnlink" href="/selftest">Transport self-test</a>
+    </div>
+
+    <div id="message" class="message"></div>
+  </section>
+
+  <section class="panel panel-canvas">
+    <h2>Force control &amp; live output</h2>
+    <div class="canvas-wrap">
+      <canvas id="forceCanvas" width="832" height="480"></canvas>
+      <div id="canvas-empty" class="empty">choose an image to begin</div>
+    </div>
+
+
+    <h2>Force delivery</h2>
+    <div class="stats stats-wide">
+      <div><span>you set</span><b id="s-ui-force">–</b></div>
+      <div><span>applied at</span><b id="s-applied">–</b></div>
+      <!-- Derived on the client: the last force whose applied-at frame is <= the frame on
+           screen. Same rule the saved video's burned-in arrow uses, so the two always agree. -->
+      <div><span>shown frame uses</span><b id="s-shown-uses">–</b></div>
+      <div><span>changes</span><b id="s-changes">0</b></div>
+    </div>
+
+    <h2>Stream</h2>
+    <div class="stats">
+      <div><span>state</span><b id="s-state">idle</b></div>
+      <div><span>shown frame</span><b id="s-shown">–</b></div>
+      <div><span>block</span><b id="s-block">–</b></div>
+      <div><span>gen fps</span><b id="s-genfps">–</b></div>
+      <div><span>recv fps</span><b id="s-recv">–</b></div>
+      <div><span>draw fps</span><b id="s-draw">–</b></div>
+      <div><span>buffer lag</span><b id="s-lag">–</b></div>
+      <div><span>latency</span><b id="s-latency">–</b></div>
+      <div><span>ttff</span><b id="s-ttff">–</b></div>
+      <div><span>MB/s out</span><b id="s-mbps">–</b></div>
+    </div>
+
+    <h2>Model</h2>
+    <div class="stats stats-wide">
+      <div><span>device</span><b id="s-device">–</b></div>
+      <div><span>clip</span><b id="s-clip">–</b></div>
+      <div><span>block size</span><b id="s-blocksize">–</b></div>
+      <div><span>vram</span><b id="s-vram">–</b></div>
+      <div><span>transport</span><b id="s-transport">–</b></div>
+      <div><span>weights</span><b id="s-weights">–</b></div>
+    </div>
+  </section>
+</main>
+
+<script src="/static/app.js?v=21"></script>
+</body>
+</html>

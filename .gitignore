@@ -1,0 +1,41 @@
+datasets
+inference_dataset
+wan_models/*
+!wan_models/README.md
+!wan_models/.gitkeep
+logs
+videos/
+__pycache__/
+slurm-logs/
+*.sh
+# ...but each demo's launcher IS the documented entry point (the READMEs say to run it),
+# so it has to be in the repo. A negation works here because *.sh excludes files, not
+# the directories containing them.
+!demo*/run.sh
+!demo*/run_demo.sh
+scratch.py
+scratch/
+*.pt
+*.mp4
+*.png
+# ...but the gallery preset stills ARE part of the demo -- without them the gallery is
+# empty on a fresh clone. Only this one folder per demo, not stray screenshots.
+!demo*/assets/*.png
+# ...and the README teaser plus the sample cases the inference scripts run on.
+!assets/**/*.png
+!assets/*.png
+scripts/
+paper_examples
+benchmark/
+check_random_change/
+force_ode
+checkpoints
+rebuttal/
+.claude/
+demo*/outputs/
+# Saved runs from the interactive demos. The mp4s were already covered by *.mp4, but the
+# meta*.json written alongside them was not, and it records prompts and force payloads.
+demo*/demo_outputs/
+presentation/
+ideas/
+paper/inference-compile-opt/

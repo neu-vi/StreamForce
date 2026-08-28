@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>transport self-test</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<!-- Self-contained on purpose: this page must NOT pick up the demo's panel styling. -->
+<style>
+body{font:14px/1.6 ui-monospace,Menlo,Consolas,monospace;background:#14161a;color:#e7e9ee;
+margin:24px;max-width:900px}
+h2{font-size:18px;margin:14px 0 10px}
+b{color:#ffd23f}
+p{margin:10px 0}
+input{width:5em;background:#14161b;color:#e7e9ee;border:1px solid #2c313b;border-radius:5px;
+padding:4px 6px;font:inherit}
+button{background:#ffd23f;color:#201c00;border:0;border-radius:6px;padding:7px 14px;font:inherit;
+font-weight:700;cursor:pointer}
+button#st-stop,button#st-reset{background:#2c313b;color:#e7e9ee}
+button.st-mini{padding:3px 9px;font-weight:400;background:#2c313b;color:#e7e9ee}
+button:disabled{opacity:.45;cursor:default}
+table{border-collapse:collapse;margin-top:14px}
+td,th{padding:3px 16px 3px 0;text-align:left;font-weight:400}
+th{opacity:.7;font-size:12px}
+#st-hist{border-top:1px solid #2c313b;margin-top:8px;font-size:13px}
+.st-row{margin:12px 0}
+.st-row label{margin-right:14px}
+.hint{opacity:.7}
+.st-big{font-size:20px}
+.st-ok{color:#7ddf82}.st-bad{color:#ff7a7a}.st-warn{color:#ffb84d}
+a.back{color:#ffd23f;text-decoration:none;border:1px solid #2c313b;border-radius:6px;
+padding:5px 11px;display:inline-block}
+a.back:hover{background:#2c313b}
+</style>
+</head>
+<body>
+<p><a class="back" href="/">&larr; back to the demo</a></p>
+<h2>Transport self-test</h2>
+{% include "_selftest.html" %}
+<script src="/static/selftest.js?v=3"></script>
+<script>initSelftest(io({ transports: ["websocket", "polling"] }));</script>
+</body>
+</html>

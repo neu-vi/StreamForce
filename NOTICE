@@ -1,0 +1,55 @@
+StreamForce -- Streaming Video Generation with Streaming Force Control
+Copyright 2025-2026 The StreamForce Authors
+https://neu-vi.github.io/StreamForce/ | https://arxiv.org/abs/2606.07508
+
+This product includes software developed at Alibaba (https://github.com/Wan-Video/Wan2.2).
+
+--------------------------------------------------------------------------------
+Wan2.2
+--------------------------------------------------------------------------------
+
+Everything under `wan/` is derived from Alibaba's Wan2.2 and remains under the Apache
+License 2.0. The original copyright headers are retained in place. Files carrying
+
+    Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
+
+are either unmodified copies or modified versions of upstream Wan2.2 sources.
+
+Modifications made by this project, relative to upstream Wan2.2:
+
+* `wan/modules/causal_model.py` — added block-causal attention with a KV cache, the
+  rolling-forcing attention path (sliding window + attention sink), and a ControlNet
+  side branch (`CausalControlNet`, `CausalControlledWanModel`).
+* `wan/modules/model.py` — added the bidirectional ControlNet side branch (`ControlNet`,
+  `ControlledWanModel`) used by the teacher.
+* `wan/modules/attention.py` — FlashAttention-3 support alongside FA2, including
+  handling both the tuple and bare-tensor return shapes of
+  `flash_attn_interface.flash_attn_varlen_func`.
+* `wan/utils/utils.py` — reduced to `masks_like`, the only helper this project calls.
+* `wan/__init__.py`, `wan/modules/__init__.py`, `wan/utils/__init__.py` — reduced to
+  the subset this project imports; the upstream barrels eagerly imported model
+  variants that are not part of this release.
+* Removed from this distribution: the animate, speech-to-video, image-to-video,
+  text-to-video and text+image-to-video pipelines, the distributed (FSDP / Ulysses /
+  sequence-parallel) helpers, the Wan2.1 VAE, the prompt-extension utilities, and the
+  video/image saving and CosyVoice download helpers from `wan/utils/utils.py`.
+  None of them are reachable from this project's entry points. They remain available
+  upstream.
+
+--------------------------------------------------------------------------------
+Prior work this project builds on
+--------------------------------------------------------------------------------
+
+The few-step causal student, the ODE-initialisation stage and the distribution-matching
+distillation setup follow:
+
+* CausVid — "From Slow Bidirectional to Fast Autoregressive Video Diffusion Models",
+  arXiv:2412.07772. Cited in `model/ode_regression.py` and `wan/modules/causal_model.py`.
+* Self-Forcing — the training-loop, scheduler and wrapper scaffolding in `utils/`,
+  `trainer/` and `model/` follows its structure closely.
+
+The force-conditioning datasets and the force-prompt overlay rendering in
+`utils/forceprompt_data/` follow the Force Prompting line of work.
+
+Please consult the licenses of those projects for terms covering the portions derived
+from them.

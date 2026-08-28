@@ -1,0 +1,44 @@
+{# Body of the standalone /selftest page. Kept as a partial so the markup and the logic in
+   flask_static/selftest.js stay side by side. Ids are prefixed `st-`. #}
+<p class="hint">Streams synthetic frames with <b>no model running</b>, over the same transport the
+demo uses: binary Socket.IO frames with the identical 12-byte header.</p>
+
+<p class="hint"><b>Read the rolling rate, not the average.</b> An average over a whole run mixes
+TCP's warm-up, the steady state and any collapse into one number &mdash; which is why the same
+link reports very different totals for a 30&nbsp;s and a 60&nbsp;s run, or for two frame sizes.
+The rolling figure is the last 5 seconds only, so you can watch it settle; <i>stable</i> says when
+it has.</p>
+
+<p class="st-row">fps <input id="st-fps" value="{{ default_fps }}">
+&nbsp; KB/frame <input id="st-kb" value="{{ default_kb }}">
+&nbsp; seconds <input id="st-secs" value="120">
+&nbsp; <button id="st-go" type="button">Run</button>
+<button id="st-stop" type="button" disabled>Stop</button>
+&nbsp; <button id="st-reset" type="button">{{ reset_label }}</button></p>
+
+<p class="hint">presets:
+  <button class="st-mini" type="button" data-p="50,15">50 KB @ 15</button>
+  <button class="st-mini" type="button" data-p="35,15">35 @ 15 (q85/0.8)</button>
+  <button class="st-mini" type="button" data-p="20,15">20 @ 15 (q60/0.75)</button>
+  <button class="st-mini" type="button" data-p="9,15">9 @ 15 (scale 0.5)</button>
+  <button class="st-mini" type="button" data-p="6,15">6 @ 15 (H.264-ish)</button>
+  {{ measured_preset|safe }}
+</p>
+
+<table>
+  <tr><td>rolling (last 5 s)</td><td class="st-big"><b id="st-roll">-</b> MB/s
+      &nbsp; <b id="st-rollfps">-</b> fps &nbsp; <span id="st-stable" class="hint">-</span></td></tr>
+  <tr><td>demand</td><td><b id="st-want">-</b></td></tr>
+  <tr><td>average since first frame</td><td><b id="st-mb">0</b> MB/s &nbsp; <b id="st-f">0</b> fps</td></tr>
+  <tr><td>frames received</td><td><b id="st-n">0</b> <span class="hint" id="st-nnote"></span></td></tr>
+  <tr><td>transport</td><td><b id="st-t">?</b></td></tr>
+  <tr><td>drain after stop</td><td><b id="st-dr">-</b></td></tr>
+  <tr><td>verdict</td><td><b id="st-r">-</b></td></tr>
+</table>
+
+<table id="st-hist"><tr><th>KB</th><th>fps in</th><th>demand</th>
+<th>rolling MB/s</th><th>fps out</th><th>verdict</th></tr></table>
+
+<p class="hint">Stop halts the sender, but frames already inside the socket and tunnel keep
+arriving &mdash; <i>drain after stop</i> counts those, a direct read of how many MB the buffers
+were holding. {{ reset_hint|safe }}</p>

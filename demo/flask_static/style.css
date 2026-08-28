@@ -1,0 +1,304 @@
+/* Layout and palette lifted from demo/static/style.css so this looks like the newer demos,
+   with the pieces this one needs: a segmented mode control, numeric force fields and a
+   caption banner. */
+
+:root {
+  --bg: #14161a;
+  --panel: #1d2027;
+  --line: #2c313b;
+  --text: #e7e9ee;
+  --muted: #939aa8;
+  --accent: #ffd23f;
+  --ok: #4ade80;
+  --wait: #fbbf24;
+  --err: #f87171;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  /* Reserve the scrollbar gutter permanently. The canvas is width:100% of an aspect-ratio wrap
+     inside a fluid grid column, so its size tracks the available page width -- and a force change
+     swaps a long status message into the 320px panel, which changes the page height, toggles the
+     scrollbar and moved the canvas by ~15px. That was the "canvas enlarges then shrinks back". */
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+header h1 { font-size: 17px; margin: 0; font-weight: 600; letter-spacing: 0.2px; }
+
+.pill {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.pill-wait { background: rgba(251, 191, 36, 0.15); color: var(--wait); }
+.pill-ok { background: rgba(74, 222, 128, 0.15); color: var(--ok); }
+.pill-err { background: rgba(248, 113, 113, 0.15); color: var(--err); }
+
+main {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px 22px 40px;
+  align-items: start;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+/* Two panels, side by side: controls on the left, the single live canvas on the right. */
+
+.panel h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+  margin: 0 0 10px;
+}
+.panel h2:not(:first-child) { margin-top: 22px; }
+
+.field { display: block; margin-bottom: 10px; }
+.field > span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.field-inline { display: flex; align-items: center; gap: 10px; }
+.field-inline > span { margin: 0; width: 68px; flex: none; }
+.field-inline input[type=range] { flex: 1; accent-color: var(--accent); }
+.field-inline output { width: 46px; text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; }
+
+/* `input:not([type])` matters: the angle / magnitude / anchor inputs are written as
+   `<input inputmode="decimal">` with no `type` attribute, and an attribute selector matches the
+   written attribute, not the type it defaults to. So `input[type=text]` never applied to them --
+   they kept the browser's default fixed width (~177px each) and overflowed the panel. */
+input[type=text], input[type=number], input:not([type]), textarea, input[type=file] {
+  width: 100%;
+  background: #14161b;
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: inherit;
+}
+textarea { resize: vertical; }
+.field-inline input[type=number] { width: 90px; }
+
+.modes { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.modes label, .checkbox { font-size: 13px; cursor: pointer; }
+.modes em, .hint em { color: var(--muted); font-style: normal; font-size: 12px; }
+.checkbox { display: block; margin: 10px 0 0; }
+
+.buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+
+button {
+  background: #262b34;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background: #2f3541; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.primary { background: var(--accent); color: #201c00; border-color: var(--accent); }
+button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* An <a> styled as a button: the self-test is a separate page, so it must be a real link
+   (new tab, middle-clickable) rather than a button with a JS navigation handler. */
+.btnlink {
+  display: inline-block;
+  background: #262b34;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 500;
+  text-decoration: none;
+}
+.btnlink:hover { background: #2f3541; }
+
+.hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+
+/* File paths have no line-break opportunity at "/" in any browser, so a long one spills past
+   the panel's edge instead of wrapping. `anywhere` lets it break mid-token. Both of these can
+   carry a save path. */
+.message { margin-top: 10px; font-size: 12px; min-height: 48px; transition: all .2s;
+  overflow-wrap: anywhere; }
+.path {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  opacity: 0.7;
+  overflow-wrap: anywhere;
+}
+.message.error { color: var(--err); }
+.message.ok { color: var(--ok); }
+.message.processing {
+  color: var(--wait);
+  font-size: 15px;
+  font-weight: 600;
+  animation: pulse-msg 1.2s ease-in-out infinite;
+}
+@keyframes pulse-msg {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
+
+.canvas-wrap {
+  position: relative;
+  background: #0d0f12;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 832 / 480;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.canvas-wrap canvas, .canvas-wrap img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+#canvas { cursor: crosshair; touch-action: none; }
+.empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+.empty.hidden { display: none; }
+
+.canvas-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(13, 15, 18, .78);
+  color: var(--wait);
+  font-size: 16px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 2;
+}
+.canvas-overlay.hidden { display: none; }
+.overlay-spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--line);
+  border-top-color: var(--wait);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.stats div {
+  background: #14161b;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 9px;
+}
+.stats span { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.stats b { font-size: 14px; font-variant-numeric: tabular-nums; font-weight: 600; }
+
+@media (max-width: 1100px) {
+  main { grid-template-columns: minmax(0, 1fr); }
+}
+
+
+/* ---------------------------------------------------------------- integrate-only additions */
+
+header h1 em { color: var(--muted); font-style: normal; font-weight: 400; }
+header { flex-wrap: wrap; }
+
+/* Segmented point/wind control, in place of demo/'s radio list. */
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #14161b; }
+.seg button { border: none; background: transparent; color: var(--muted); padding: 9px 8px; cursor: pointer; font: inherit; font-weight: 600; }
+.seg button.active { background: var(--accent); color: #201c00; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* Grid items default to `min-width: auto`, so a wide child pushes the column wider instead of
+   shrinking. Without this the grid can still overflow the panel even once the inputs are 100%. */
+.grid2 .field { margin-bottom: 0; min-width: 0; }
+.grid2 input { min-width: 0; }
+
+/* Caption banner above the prompt box. */
+.caption-bar { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); margin: 0 0 4px; min-height: 16px; }
+.caption-bar .dot { width: 7px; height: 7px; border-radius: 50%; background: #4b5563; flex: none; }
+.caption-bar.working .dot { background: var(--wait); animation: pulse 1s ease-in-out infinite; }
+.caption-bar.ready .dot { background: var(--ok); }
+.caption-bar.err .dot { background: var(--err); }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+
+.file-row { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; }
+.file-btn { padding: 8px 12px; white-space: nowrap; }
+.file-name { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+input[type=file] { display: none; }
+
+.canvas-wrap #forceCanvas { cursor: crosshair; touch-action: none; display: block; width: 100%; height: 100%; object-fit: contain; }
+.hint code { background: #14161b; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+
+/* ---- gallery presets -------------------------------------------------------------------- */
+/* Two columns inside the fixed 320px panel gives ~140x81 thumbs, which is the smallest size
+   the 832x480 stills stay readable at. */
+.gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.gallery-item {
+  position: relative;
+  padding: 0;                       /* the global button rule adds 8px 14px */
+  background: #14161b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  display: block;
+}
+.gallery-item img { display: block; width: 100%; aspect-ratio: 832 / 480; object-fit: cover; }
+.gallery-item .g-label {
+  display: block; font-size: 10.5px; line-height: 1.25; color: var(--muted);
+  padding: 4px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gallery-item .g-badge {
+  position: absolute; top: 4px; left: 4px;
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  background: rgba(0, 0, 0, 0.62); color: var(--text);
+  border-radius: 4px; padding: 1px 5px;
+}
+.gallery-item:hover:not(:disabled) { background: #1b1f27; border-color: var(--muted); }
+.gallery-item.active { border-color: var(--accent); }
+.gallery-item.active .g-label { color: var(--accent); font-weight: 600; }
+.gallery-item.active .g-badge { background: var(--accent); color: #201c00; }
+.gallery-item:disabled { opacity: 0.45; cursor: default; }
