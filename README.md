@@ -4,12 +4,12 @@
 
 ### Streaming Video Generation with Streaming Force Control
 
-[Hanhui Wang](https://github.com/SARIHUST)<sup>1</sup> &nbsp;·&nbsp;
+[Hanhui Wang](https://sarihust.github.io)<sup>1</sup> &nbsp;·&nbsp;
 [Yiming Xie](https://ymingxie.github.io)<sup>1,2</sup> &nbsp;·&nbsp;
-Haiwen Feng<sup>2,3</sup> &nbsp;·&nbsp;
-Zhaoyang Lv<sup>2</sup> &nbsp;·&nbsp;
-Shenlong Wang<sup>4</sup> &nbsp;·&nbsp;
-Huaizu Jiang<sup>1</sup>
+[Haiwen Feng](https://havenfeng.github.io)<sup>2,3</sup> &nbsp;·&nbsp;
+[Zhaoyang Lv](https://lvzhaoyang.github.io)<sup>2</sup> &nbsp;·&nbsp;
+[Shenlong Wang](https://shenlong.web.illinois.edu)<sup>4</sup> &nbsp;·&nbsp;
+[Huaizu Jiang](https://jianghz.me)<sup>1</sup>
 
 <sup>1</sup>Northeastern University &nbsp;&nbsp; <sup>2</sup>Impossible Research &nbsp;&nbsp;
 <sup>3</sup>UC Berkeley &nbsp;&nbsp; <sup>4</sup>UIUC
