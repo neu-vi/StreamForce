@@ -67,6 +67,11 @@ class SessionRuntime:
     stream_epoch: int = 0
 
     frame_counter: int = 0
+    # First frame index of the CURRENT segment. 0 for a fresh run; on a continuation (a second
+    # Start on the frame left on screen) it is where the previous segment stopped, so numbering,
+    # the saved clip and the force timeline run on instead of restarting at 0. The per-run frame
+    # budget is measured from here, not from 0.
+    segment_start_frame: int = 0
     worker: Optional[threading.Thread] = None
     sender_worker: Optional[threading.Thread] = None
     frame_queue: Queue = field(default_factory=lambda: Queue(maxsize=512))
@@ -660,6 +665,7 @@ def _clear_generation_state(sess: SessionRuntime) -> None:
     sess.decoded_block_last_frame.clear()
     sess.decoded_block_last_frame_index.clear()
     sess.frame_counter = 0
+    sess.segment_start_frame = 0
     sess.current_display_frame = None if sess.reference_frame is None else sess.reference_frame.copy()
     sess.pending_force_change_debug.clear()
     _reset_io_stats(sess)
@@ -866,6 +872,12 @@ def _generation_worker(sid: str) -> None:
                  f"(max {int(backend.cfg.num_latent_frames)})")
         else:
             run_video_frames = int(backend.num_video_frames)
+        with sess.lock:
+            segment_start = int(sess.segment_start_frame)
+        # ABSOLUTE, and for the whole clip: frame indices run 0..run_video_frames-1 and that is
+        # the entire budget. Stopping part-way and pressing Start again RESUMES inside that range
+        # (the emit guard below stops at the last frame); it is not granted a fresh budget. Once
+        # the last frame is reached the clip is over and the next Start is a new one from 0.
         max_output_frames = int(run_video_frames)
         # (steps-1) blocks are always in flight inside the rolling window: denoised, not yet
         # emitted. `den - shown` can never fall below that, so the watermarks must clear it.
@@ -896,7 +908,10 @@ def _generation_worker(sid: str) -> None:
                 pending_before = int(sess.force_change_seq)
                 applied_force_seq = pending_before
                 sess.force_timeline = [
-                    {"video_first": 0, "ui": dict(converted.get("ui") or {}),
+                    e for e in sess.force_timeline
+                    if int(e.get("video_first", 0)) < segment_start
+                ] + [
+                    {"video_first": int(segment_start), "ui": dict(converted.get("ui") or {}),
                      "seq": applied_force_seq, "mode": str(sess.mode)}
                 ]
                 sess.applied_force_seq = applied_force_seq
@@ -908,7 +923,8 @@ def _generation_worker(sid: str) -> None:
                 _log(f"[force] ABSORBED id<={pending_before} into the initial signal "
                      f"(built at frame 0); nothing to apply mid-run")
                 _emit_force_change_completion_upto(sid, sess, pending_before,
-                                                   video_start_frame=0, full_video_frame=0)
+                                                   video_start_frame=segment_start,
+                                                   full_video_frame=segment_start)
                 absorbed_upto = pending_before
 
             def _on_chunk(chunk_frames: np.ndarray, block_index: int) -> None:
@@ -1019,11 +1035,15 @@ def _generation_worker(sid: str) -> None:
                         return None
                     mode_snapshot = str(sess.mode)
                     payload_snapshot = str(sess.payload_text)
-                video_start = _latent_to_video_frame_index(int(current_start_latent_frame))
+                # Absolute video-frame indices. The pipeline restarts its latent numbering at 0
+                # on every call, while `shown` below is the browser's absolute frame index, so a
+                # continuation would otherwise report a change landing hundreds of frames behind
+                # the viewer.
+                video_start = segment_start + _latent_to_video_frame_index(int(current_start_latent_frame))
                 blk = max(1, int(backend.pipeline.num_frame_per_block))
                 full_latent = (int(full_start_latent) if full_start_latent is not None
                                else int(current_start_latent_frame))
-                full_video = _latent_to_video_frame_index(full_latent)
+                full_video = segment_start + _latent_to_video_frame_index(full_latent)
                 signal_frame_start = 0
                 signal_total_frames: Optional[int] = None
                 if mode_snapshot == "wind":
@@ -1144,7 +1164,8 @@ def _generation_worker(sid: str) -> None:
                         f"prepare={float(log.get('prepare_ms', 0.0)):.1f}ms "
                         f"total={float(log.get('total_ms', 0.0)):.1f}ms",
                     )
-                _emit_status(sid, f"Generation finished (max {max_output_frames} frames)")
+                _emit_status(sid, f"Generation finished ({run_video_frames} frames, "
+                                  f"up to frame {max_output_frames - 1})")
                 break
 
             except GenerationStopped:
@@ -1700,10 +1721,35 @@ def on_start(data):
         sess.client_received = 0        # per-run, like io_stats; the browser resets its copy too
         sess.client_displayed = -1
         sess.client_buffered = -1
-        sess.saved_frames = []          # a new run replaces what was available to save
-        sess.force_timeline = []        # re-seeded by the worker once the signal is built
+        # A second Start on the frame left on screen continues the same video: the browser sends
+        # that frame back as the reference and sets `continue_from_last`. Only the MODEL restarts
+        # -- KV and RoPE are rebuilt from that single frame, so motion does not carry across the
+        # seam -- but the bookkeeping must not restart with it.
+        #
+        # The base is the frame the viewer was LOOKING AT (`continue_from_frame`), not
+        # `frame_counter`: generation runs ahead of playback, so on Stop the server has produced
+        # frames the browser never showed and discarded. Those are what gets continued away from,
+        # so they are dropped from the saved clip here -- otherwise the saved mp4 would replay
+        # them and then jump back to the seam.
+        continue_from = _parse_optional_int(data.get("continue_from_frame"))
+        continued = (bool(data.get("continue_from_last"))
+                     and continue_from is not None and int(continue_from) >= 0
+                     and int(sess.frame_counter) > 0)
+        if continued:
+            base = min(int(continue_from) + 1, int(sess.frame_counter))
+            sess.frame_counter = base
+            sess.segment_start_frame = base
+            del sess.saved_frames[base:]
+            sess.force_timeline = [e for e in sess.force_timeline
+                                   if int(e.get("video_first", 0)) < base]
+            _log(f"[gen] continuing from frame {base} (viewer was on {int(continue_from)}); "
+                 f"{len(sess.saved_frames)} frames kept for saving")
+        else:
+            sess.frame_counter = 0
+            sess.segment_start_frame = 0
+            sess.saved_frames = []      # a new run replaces what was available to save
+            sess.force_timeline = []    # re-seeded by the worker once the signal is built
         sess.generating = True
-        sess.frame_counter = 0
         _reset_io_stats(sess)
         _start_sender_if_needed(sess)
         sess.worker = threading.Thread(target=_generation_worker, args=(sid,), daemon=True)

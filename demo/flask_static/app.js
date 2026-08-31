@@ -27,7 +27,8 @@ const promptEl = $("prompt");
 let liveBitmap = null;
 // Whether `liveBitmap` holds a generated frame or the uploaded still. v6 kept updating
 // `baseImageDataUrl` on every displayed frame, so pressing Start again continued from the frame
-// you were looking at; with frames now arriving as bitmaps that flag is what preserves it.
+// you were looking at; with frames now arriving as bitmaps that flag is what preserves it. Start
+// also reads it to tell a resume from a first run -- see the `continuing` rule there.
 let liveBitmapIsGenerated = false;
 const seedInputEl = $("seedInput");
 const modeButtons = Array.from(document.querySelectorAll("#modeSeg button"));
@@ -732,9 +733,9 @@ socket.on("caption_ready", (d) => {
 
 /** A JPEG data URL of what is on screen, made only when something asks for one.
  *
- * The server's `set_input` / `start` still take `reference_image_data` as a data URL, and
- * "Start again" is supposed to continue from the frame you were looking at. Rendering one per
- * frame was the expensive part; rendering one per click costs nothing.
+ * The server's `set_input` / `start` / `set_reference_frame` take `reference_image_data` as a
+ * data URL, and a Start that RESUMES a part-watched clip continues from the frame you were
+ * looking at. Rendering one per frame was the expensive part; one per click costs nothing.
  */
 function frameDataUrl() {
   if (!liveBitmap || !liveBitmapIsGenerated) return baseImageDataUrl;
@@ -770,9 +771,21 @@ $("startBtn").onclick = () => {
   framesFailed = 0;
   setText("s-changes", "0");
   setText("s-applied", "–");
-  // Frame 0 onwards uses what is set right now, so the readout is populated from the first
-  // frame instead of staying blank until the first change.
-  forceTimeline = [{ video_first: 0, label: describeForce() }];
+  // The clip is frames 0..clipFrames-1 and that is the whole budget.
+  //   stopped part-way  -> RESUME: carry on from the frame on screen, keeping its numbering,
+  //                        the saved clip and the force timeline, up to the last frame.
+  //   watched to the end -> NEW CLIP: back to frame 0 and the uploaded image.
+  // Read BEFORE clearPlaybackState(), which resets lastDisplayedFrameIndex to -1.
+  clipFrames = galleryLatents ? (galleryLatents - 1) * 4 + 1 : fullClipFrames;
+  const continuing = liveBitmapIsGenerated && lastDisplayedFrameIndex >= 0
+    && lastDisplayedFrameIndex < clipFrames - 1;
+  const contFrom = continuing ? lastDisplayedFrameIndex : -1;
+  const segStart = continuing ? contFrom + 1 : 0;
+  // The segment's first frame onwards uses what is set right now, so the readout is populated
+  // from the first frame instead of staying blank until the first change. Earlier segments'
+  // entries are kept: they still label the frames already on the timeline.
+  forceTimeline = (continuing ? forceTimeline.filter((e) => e.video_first < segStart) : [])
+    .concat([{ video_first: segStart, label: describeForce() }]);
   pendingForceLabels = [];
   forceLabelBySeq = {};
   lastShownUses = null;
@@ -784,8 +797,14 @@ $("startBtn").onclick = () => {
     prompt: promptEl.value,
     mode: modeSel.value,
     payload_text: payloadText(),
-    // v6 semantics: continue from the frame on screen if one was generated, else the upload.
-    reference_image_data: liveBitmapIsGenerated ? frameDataUrl() : baseImageDataUrl,
+    // Resuming continues from the frame on screen, so the picture carries on where it stopped.
+    // A finished clip starts over from the upload -- see `continuing` above.
+    reference_image_data: continuing ? frameDataUrl() : baseImageDataUrl,
+    // Tells the server this is a continuation and which frame it continues from. The server
+    // cannot infer it: generation runs ahead of playback, so its own frame counter points past
+    // the frame being sent back as the reference.
+    continue_from_last: continuing,
+    continue_from_frame: contFrom,
     seed: startSeed,
     // Only present for gallery presets; the server falls back to its configured maximum.
     latents: galleryLatents || undefined,
