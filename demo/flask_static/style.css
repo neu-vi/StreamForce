@@ -171,6 +171,11 @@ button.primary:hover:not(:disabled) { filter: brightness(1.08); }
   border-radius: 8px;
   overflow: hidden;
   aspect-ratio: 832 / 480;
+  /* Without a cap the canvas is width:100% of the fluid right column, so on a wide screen it
+     upscales the 832x480 frames well past native (~1500px on a 1080p display). Cap it instead.
+     832px would be pixel-perfect 1:1; 1248 is 1.5x that, upscaled but easier to watch. Display
+     only -- generation resolution comes from --height/--width on the server. */
+  max-width: 1248px;
   display: flex;
   align-items: center;
   justify-content: center;
