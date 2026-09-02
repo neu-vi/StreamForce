@@ -10,7 +10,7 @@ import traceback
 from queue import Empty, Queue
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -179,8 +179,9 @@ _BACKEND_METADATA: Dict[str, Dict[str, Any]] = {}
 _BACKEND_LOAD_ERROR: Optional[str] = None
 _BACKEND_LOCK = threading.Lock()
 
-# Auto-captioner (Qwen3-VL). Optional: with --caption_model "" the demo behaves exactly like
-# an earlier variant, and the prompt box stays manual.
+# Prompt-writing VLM (Qwen3-VL). Two jobs: caption an uploaded image for wind force, and expand
+# a short object hint into a full prompt for point force. Optional: with --caption_model "" the
+# demo behaves exactly like an earlier variant, and the prompt box stays manual.
 CAPTIONER: Optional[ImageCaptioner] = None
 _CAPTION_SEQ: Dict[str, int] = {}
 _CAPTION_LOCK = threading.Lock()
@@ -194,12 +195,16 @@ def _captioner_ready() -> bool:
     return CAPTIONER is not None and CAPTIONER.ready
 
 
-def _caption_async(sid: str, data_url: str) -> None:
-    """Caption a freshly uploaded reference image and push the text to that client.
+def _vlm_async(sid: str, kind: str, produce: Callable[[], str]) -> None:
+    """Run one VLM call on its own thread and push the resulting prompt text to that client.
 
     Runs on its own thread: the VLM takes seconds and this is triggered from a Socket.IO
-    handler, which must not block. Each upload bumps a per-session sequence number so a slow
-    caption from a superseded image is discarded instead of overwriting a newer one.
+    handler, which must not block. Each call bumps a per-session sequence number so a slow
+    result for a superseded image or object hint is discarded instead of overwriting a newer one.
+
+    `kind` is echoed to the browser so it can word the status line, and decide whether the text
+    may overwrite an edited prompt box: "caption" is automatic and must not, "expand" was asked
+    for by a button press and may.
     """
     with _CAPTION_LOCK:
         _CAPTION_SEQ[sid] = _CAPTION_SEQ.get(sid, 0) + 1
@@ -208,30 +213,47 @@ def _caption_async(sid: str, data_url: str) -> None:
     def _work() -> None:
         if not _captioner_ready():
             return
-        SOCKET.emit("caption_status", {"state": "working"}, to=sid)
+        SOCKET.emit("caption_status", {"state": "working", "kind": kind}, to=sid)
         try:
-            from io import BytesIO
-            import base64 as _b64
-
-            from PIL import Image as _Image
-
-            raw = data_url.split(",", 1)[1] if "," in data_url else data_url
-            pil = _Image.open(BytesIO(_b64.b64decode(raw))).convert("RGB")
             started = time.perf_counter()
-            caption = CAPTIONER.caption(pil)
+            text = produce()
             took = time.perf_counter() - started
         except Exception as exc:
-            _log(f"[captioner] failed: {exc}")
-            SOCKET.emit("caption_status", {"state": "error", "error": str(exc)}, to=sid)
+            _log(f"[captioner] {kind} failed: {exc}")
+            SOCKET.emit("caption_status", {"state": "error", "kind": kind, "error": str(exc)}, to=sid)
             return
         with _CAPTION_LOCK:
             if _CAPTION_SEQ.get(sid) != seq:
-                _log("[captioner] discarding caption for a superseded image")
+                _log(f"[captioner] discarding {kind} result for a superseded request")
                 return
-        _log(f"[captioner] {took:.1f}s: {caption[:110]}")
-        SOCKET.emit("caption_ready", {"caption": caption, "took_s": took}, to=sid)
+        _log(f"[captioner] {kind} {took:.1f}s: {text[:110]}")
+        SOCKET.emit("caption_ready", {"caption": text, "kind": kind, "took_s": took}, to=sid)
 
-    threading.Thread(target=_work, name="caption", daemon=True).start()
+    threading.Thread(target=_work, name=f"vlm-{kind}", daemon=True).start()
+
+
+def _pil(frame: np.ndarray):
+    from PIL import Image as _Image
+
+    return _Image.fromarray(frame)
+
+
+def _caption_async(sid: str, frame: np.ndarray) -> None:
+    """Caption a freshly uploaded reference image.
+
+    This is the wind path: wind acts on the whole scene, so a static description of it plus the
+    force vector is everything the generator needs, and no input beyond the image is required.
+    """
+    _vlm_async(sid, "caption", lambda: CAPTIONER.caption(_pil(frame)))
+
+
+def _expand_prompt_async(sid: str, object_hint: str, frame: np.ndarray) -> None:
+    """Expand a short phrase naming an object into a full point-force prompt.
+
+    This is the point path: the force acts on ONE object and only the user knows which, so the
+    text starts from their hint rather than from the image alone.
+    """
+    _vlm_async(sid, "expand", lambda: CAPTIONER.expand_prompt(_pil(frame), object_hint))
 
 
 def _safe_json_parse(text: str) -> Dict[str, Any]:
@@ -1600,7 +1622,7 @@ def on_disconnect():
 def on_set_input(data):
     sid = request.sid
     sess = _session(sid)
-    new_image_data_url = ""
+    new_frame: Optional[np.ndarray] = None
     with sess.lock:
         image_updated = False
         requested_stop_for_new_image = False
@@ -1615,7 +1637,10 @@ def on_set_input(data):
                 sess.reference_frame = _decode_data_url_image(data["reference_image_data"])
                 sess.current_display_frame = sess.reference_frame.copy()
                 image_updated = True
-                new_image_data_url = str(data["reference_image_data"])
+                # Hand the decoded array to the VLM rather than the data URL it came from, so a
+                # later upload replacing sess.reference_frame cannot swap the image out from
+                # under a caption already in flight -- and so it is only decoded once.
+                new_frame = sess.reference_frame
                 if sess.generating:
                     sess.stop_requested = True
                     sess.sender_stop = True
@@ -1624,15 +1649,51 @@ def on_set_input(data):
             except Exception as exc:
                 emit("status", {"message": f"Invalid uploaded image payload: {exc}", "kind": "error"})
                 return
-    # Outside the lock: captioning spawns a thread and emits on its own.
+        mode_now = sess.mode
+        prompt_now = sess.prompt.strip()
+    # Outside the lock: the VLM spawns a thread and emits on its own.
     if image_updated and _captioner_ready():
-        _caption_async(sid, new_image_data_url)
+        if mode_now == "point":
+            # A point force acts on one object and only the user knows which, so there is nothing
+            # useful to fill the box with yet -- wait for `expand_prompt` to bring the hint. Only
+            # say so while the box is still empty: Start re-sends the image, and nagging then
+            # would talk over the prompt that is already there.
+            if not prompt_now:
+                SOCKET.emit("caption_status", {"state": "need_hint", "kind": "expand"}, to=sid)
+        else:
+            _caption_async(sid, new_frame)
     if requested_stop_for_new_image:
         emit("status", {"message": "New image selected: stopped current generation and cleared state. Press Start to restart.", "kind": "info"})
     elif image_updated:
         emit("status", {"message": "Input updated (new reference image set)", "kind": "info"})
     else:
         emit("status", {"message": "Input updated", "kind": "info"})
+
+
+@SOCKET.on("expand_prompt")
+def on_expand_prompt(data):
+    """Point force: turn a short phrase naming an object into a full prompt.
+
+    Explicitly requested by the browser's Generate button, not by the upload, because the hint
+    does not exist at upload time. The image is the one already on the session, so the browser
+    does not re-ship it.
+    """
+    sid = request.sid
+    sess = _session(sid)
+    hint = str((data or {}).get("object_hint") or "").strip()
+    if not hint:
+        emit("status", {"message": "Say which object should move first", "kind": "warning"})
+        return
+    if not _captioner_ready():
+        emit("status", {"message": "The VLM is not loaded; write the prompt by hand",
+                        "kind": "warning"})
+        return
+    with sess.lock:
+        frame = sess.reference_frame
+    if frame is None:
+        emit("status", {"message": "Choose an image before generating a prompt", "kind": "warning"})
+        return
+    _expand_prompt_async(sid, hint, frame)
 
 
 @SOCKET.on("set_reference_frame")
@@ -2016,8 +2077,9 @@ def main() -> None:
     parser.add_argument(
         "--caption_model",
         default="Qwen/Qwen3-VL-8B-Instruct",
-        help="HuggingFace model ID or local path for the VLM captioner, used to fill the prompt "
-             "box automatically when an image is uploaded. Pass an empty string to disable.",
+        help="HuggingFace model ID or local path for the VLM that writes the prompt box: an "
+             "automatic caption for wind force, or your short object hint expanded into a full "
+             "prompt for point force. Pass an empty string to disable.",
     )
     parser.add_argument(
         "--caption_device",

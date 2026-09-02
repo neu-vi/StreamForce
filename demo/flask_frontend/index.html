@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>StreamForce Demo</title>
-<link rel="stylesheet" href="/static/style.css?v=6" />
+<link rel="stylesheet" href="/static/style.css?v=7" />
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
 <body>
@@ -30,9 +30,17 @@
       <input type="file" id="imageUpload" accept="image/*" />
     </label>
 
-    <label class="field">
+    <label class="field" for="prompt">
       <span>Text prompt</span>
       <div id="caption-bar" class="caption-bar"><i class="dot"></i><span id="caption-text">auto-caption unavailable</span></div>
+      <!-- Point force only: the force acts on one object, and the VLM cannot guess which one,
+           so it expands this hint instead of captioning the image. Hidden in wind mode. -->
+      <div class="object-row" id="objectRow">
+        <input id="objectInput" type="text" autocomplete="off"
+               aria-label="object the force should move"
+               placeholder="which object should move? e.g. the red vase" />
+        <button id="expandPromptBtn" type="button" class="file-btn" disabled>Generate</button>
+      </div>
       <textarea id="prompt" rows="5" placeholder="Describe the image, or upload one and let the captioner fill this in…"></textarea>
     </label>
 
@@ -130,6 +138,6 @@
   </section>
 </main>
 
-<script src="/static/app.js?v=21"></script>
+<script src="/static/app.js?v=22"></script>
 </body>
 </html>

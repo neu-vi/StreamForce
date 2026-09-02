@@ -266,7 +266,13 @@ header { flex-wrap: wrap; }
 .caption-bar.working .dot { background: var(--wait); animation: pulse 1s ease-in-out infinite; }
 .caption-bar.ready .dot { background: var(--ok); }
 .caption-bar.err .dot { background: var(--err); }
+.caption-bar.warn .dot { background: var(--wait); }
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+
+/* Point-force object hint: text box + Generate, on one line above the prompt box. `min-width: 0`
+   for the same reason .grid2 needs it -- a grid item will not shrink below its content width. */
+.object-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; margin: 0 0 6px; }
+.object-row input { min-width: 0; }
 
 .file-row { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; }
 .file-btn { padding: 8px 12px; white-space: nowrap; }

@@ -15,7 +15,8 @@
 <sup>3</sup>UC Berkeley &nbsp;&nbsp; <sup>4</sup>UIUC
 
 **[📄 Paper](https://arxiv.org/abs/2606.07508)** &nbsp;·&nbsp;
-**[🌐 Project Page](https://neu-vi.github.io/StreamForce/)**
+**[🌐 Project Page](https://neu-vi.github.io/StreamForce/)** &nbsp;·&nbsp;
+**[💾 Weights](https://drive.google.com/file/d/1ZaOEVMzOxAtcadX2c8hBF6wA7BrtUTOi/view?usp=sharing)**
 
 <table>
 <tr>
@@ -48,30 +49,9 @@ Prior work trains a separate model per force type, assumes the force is fixed, o
 non-causal processing. StreamForce is a single **causal** model that handles both **local**
 (point) and **global** (wind) forces, **time-varying**, in one unified force representation.
 
-> **Weights are not included in this repository.** The Wan2.2 base model is downloaded
-> separately; the trained ControlNet and distilled checkpoints are not published here.
-
----
-
-## TODO
-
-- [x] Model — the ControlNet branch, the causal student, and the Wan2.2 modifications they need
-- [x] Training — all four stages, driven by `configs/` and `train.py`: the bidirectional
-      teacher, ODE pair generation, ODE initialisation, and distribution-matching distillation
-- [x] Offline inference — `inference.py` (teacher), `inference_causal.py` (student) and
-      `inference_causal_rolling_forcing.py` (the rolling-window implementation the demo uses)
-- [x] Interactive demo — the streaming browser demo, with the pacing and inference
-      optimisations documented in [`demo/README.md`](demo/README.md) and
-      [`demo/OPTIMIZATIONS.md`](demo/OPTIMIZATIONS.md)
-- [x] Sample data — six cases in [`assets/samples/`](assets/samples/README.md) so the
-      inference scripts run without any private dataset
-- [ ] Weights — the trained ControlNet teacher and the distilled student
-- [ ] Data processing — the scripts that build the force datasets: rendering the synthetic
-      point and wind clips, captioning and annotating the diverse real-image sets, and the
-      train/val split tooling. The `datasets/` layout the training configs expect is produced
-      by these
-- [ ] Falling motion — a falling-specific teacher and the dual-teacher distillation recipe
-      that routes supervision between it and the unified force teacher
+**Contents** — [Requirements](#requirements) · [Quick start](#quick-start) ·
+[Interactive demo](#the-interactive-demo) · [Offline inference](#offline-inference) ·
+[Training](#training) · [Limitations](#limitations) · [Roadmap](#roadmap)
 
 ---
 
@@ -99,16 +79,27 @@ pip install flash-attn==2.8.3 --no-build-isolation      # builds against the tor
 # 2. base model (~33 GB) -- resolved by path, so the layout matters
 hf download Wan-AI/Wan2.2-TI2V-5B --local-dir wan_models/Wan2.2-TI2V-5B
 
-# 3. interactive demo
-CUDA_VISIBLE_DEVICES=0,1 CHECKPOINT=/path/to/model.pt PORT=5013 ./demo/run.sh
+# 3. download checkpoint
+pip install gdown && mkdir -p checkpoints
+gdown 1ZaOEVMzOxAtcadX2c8hBF6wA7BrtUTOi -O checkpoints/streamforce_v1_ckpt.pt
+
+# 4. interactive demo
+CUDA_VISIBLE_DEVICES=0,1 CHECKPOINT=checkpoints/streamforce_v1_ckpt.pt PORT=4023 ./demo/run.sh
 ```
 
-Open `http://localhost:5013` — or forward it first if the box is remote:
-`ssh -L 5013:localhost:5013 <host>`.
+Open `http://localhost:4023` — or forward it first if the box is remote:
+`ssh -L 4023:localhost:4023 <host>`.
 
 Run every script from the repository root; config and weight paths resolve relative to the
 working directory. See [`wan_models/README.md`](wan_models/README.md) for the expected weight
 tree.
+
+Step 3 is one `.pt` that covers **both** point and wind forces, and it is all the demo and the
+two causal inference scripts need — grab it from
+[Google Drive](https://drive.google.com/file/d/1ZaOEVMzOxAtcadX2c8hBF6wA7BrtUTOi/view?usp=sharing)
+in the browser instead if you prefer, and put it anywhere. Every script takes the path on the
+command line (`--checkpoint_path`, or `CHECKPOINT=` for the demo); `--use_ema` loads the EMA
+weights rather than the raw ones.
 
 ---
 
@@ -160,6 +151,55 @@ what each requires, and what each costs numerically.
 
 ---
 
+## Offline inference
+
+All three scripts read the six sample cases in [`assets/samples/`](assets/samples/README.md) —
+three point-force and three wind-force stills, the same ones the demo offers as gallery presets
+— selected with `--force_type`. The `*_change` variants reverse the force halfway through the
+clip. Adding your own case is a PNG plus a CSV row; the sample README gives the columns.
+
+**The 4-step causal student** — one 81-frame clip per case, and what the released checkpoint is:
+
+```bash
+python inference_causal.py \
+    --config_path configs/dmd_everything.yaml \
+    --checkpoint_path checkpoints/streamforce_v1_ckpt.pt \
+    --force_type wind_force \
+    --output_folder outputs/student_wind
+```
+
+**Rolling forcing** — the same student past its training horizon, and the reference
+implementation the demo is built on:
+
+```bash
+python inference_causal_rolling_forcing.py \
+    --config_path configs/dmd_everything.yaml \
+    --checkpoint_path checkpoints/streamforce_v1_ckpt.pt \
+    --force_type point_force_change \
+    --output_folder outputs/rolling_point_change
+```
+
+**The bidirectional teacher** — 50 denoising steps, accurate and slow; takes a teacher
+checkpoint you trained yourself with stage 1 of [Training](#training):
+
+```bash
+python inference.py \
+    --config_path configs/finetune_bidirectional_teacher.yaml \
+    --checkpoint_path <PATH_TO_TEACHER_CKPT> \
+    --force_type point_force \
+    --output_folder outputs/teacher_point
+```
+
+`--force_type` is one of `point_force`, `wind_force`, `point_force_change`,
+`wind_force_change`. Add `--no_arrow` to save the raw frames without the force overlay,
+`--use_ema` to load EMA weights, and `--seed` to change the noise. Output is one mp4 per case,
+named by its row in the CSV. All three shard across GPUs under `torchrun --nproc_per_node=N`.
+
+The benchmark sets the paper reports on are not distributed here; these six cases are for
+checking that a checkpoint runs, not for reproducing the numbers.
+
+---
+
 ## Training
 
 | Stage | Config | Command |
@@ -195,53 +235,8 @@ them, so this normally runs once per scenario; output lands in `force_ode/<scena
 the stage-3 config's `*_force_data_path` keys then point at. See
 [`ode_pairs/README.md`](ode_pairs/README.md).
 
----
-
-## Offline inference
-
-All three read the six sample cases in [`assets/samples/`](assets/samples/README.md) — three
-point-force and three wind-force stills, the same ones the demo offers as gallery presets —
-selected with `--force_type`. The `*_change` variants reverse the force halfway through the
-clip. Adding your own case is a PNG plus a CSV row; the sample README gives the columns.
-
-**The bidirectional teacher** — 50 denoising steps, accurate and slow:
-
-```bash
-python inference.py \
-    --config_path configs/finetune_bidirectional_teacher.yaml \
-    --checkpoint_path <PATH_TO_TEACHER_CKPT> \
-    --force_type point_force \
-    --output_folder outputs/teacher_point
-```
-
-**The 4-step causal student** — one 81-frame clip per case:
-
-```bash
-python inference_causal.py \
-    --config_path configs/dmd_everything.yaml \
-    --checkpoint_path <PATH_TO_DISTILLED_STUDENT_CKPT> \
-    --force_type wind_force \
-    --output_folder outputs/student_wind
-```
-
-**Rolling forcing** — the same student past its training horizon, and the reference
-implementation the demo is built on:
-
-```bash
-python inference_causal_rolling_forcing.py \
-    --config_path configs/dmd_everything.yaml \
-    --checkpoint_path <PATH_TO_DISTILLED_STUDENT_CKPT> \
-    --force_type point_force_change \
-    --output_folder outputs/rolling_point_change
-```
-
-`--force_type` is one of `point_force`, `wind_force`, `point_force_change`,
-`wind_force_change`. Add `--no_arrow` to save the raw frames without the force overlay,
-`--use_ema` to load EMA weights, and `--seed` to change the noise. Output is one mp4 per case,
-named by its row in the CSV. All three shard across GPUs under `torchrun --nproc_per_node=N`.
-
-The benchmark sets the paper reports on are not distributed here; these six cases are for
-checking that a checkpoint runs, not for reproducing the numbers.
+Training also needs the force datasets, which the data-processing scripts build — those are
+[not released yet](#roadmap).
 
 ---
 
@@ -252,6 +247,37 @@ checking that a checkpoint runs, not for reproducing the numbers.
   tail of a long clip drifts from the input image regardless of the force.
 - Force is a **conditioning signal**, not a physics solver: it steers motion, it does not
   simulate it.
+
+---
+
+## Roadmap
+
+Released:
+
+- [x] Model — the ControlNet branch, the causal student, and the Wan2.2 modifications they need
+- [x] Training — all four stages, driven by `configs/` and `train.py`: the bidirectional
+      teacher, ODE pair generation, ODE initialisation, and distribution-matching distillation
+- [x] Offline inference — `inference.py` (teacher), `inference_causal.py` (student) and
+      `inference_causal_rolling_forcing.py` (the rolling-window implementation the demo uses)
+- [x] Interactive demo — the streaming browser demo, with the pacing and inference
+      optimisations documented in [`demo/README.md`](demo/README.md) and
+      [`demo/OPTIMIZATIONS.md`](demo/OPTIMIZATIONS.md)
+- [x] Sample data — six cases in [`assets/samples/`](assets/samples/README.md) so the
+      inference scripts run without any private dataset
+- [x] **Distilled student weights** — the 4-step causal model, on
+      [Google Drive](https://drive.google.com/file/d/1ZaOEVMzOxAtcadX2c8hBF6wA7BrtUTOi/view?usp=sharing)
+
+Still to come:
+
+- [ ] Data processing — the scripts that build the force datasets: rendering the synthetic
+      point and wind clips, captioning and annotating the diverse real-image sets, and the
+      train/val split tooling. The `datasets/` layout the training configs expect is produced
+      by these
+- [ ] Falling motion — a falling-specific teacher and the dual-teacher distillation recipe
+      that routes supervision between it and the unified force teacher
+
+Looking further out, we are exploring porting the force conditioning to a stronger video
+backbone (MiniMax H3).
 
 ---
 

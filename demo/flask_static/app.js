@@ -6,6 +6,7 @@
  *         start     {prompt, mode, payload_text, reference_image_data, seed}
  *         stop      {}
  *         change_force {mode, payload_text, displayed_frame_index, displayed_block_index}
+ *         expand_prompt {object_hint}                                   (point force, added here)
  *   down  status, default_config, model_loaded, frame_ready, restart_cutover,
  *         caption_ready / caption_status (added here)
  *
@@ -38,6 +39,9 @@ const anchorXInputEl = $("anchorXInput");
 const anchorYInputEl = $("anchorYInput");
 const anchorXWrapEl = $("anchorXWrap");
 const anchorYWrapEl = $("anchorYWrap");
+const objectRowEl = $("objectRow");
+const objectInputEl = $("objectInput");
+const expandPromptBtnEl = $("expandPromptBtn");
 
 // ---- v6 constants: must match interactive_demo_socketio_app.py / the force adapter ----------
 const MAX_LEN = 80;                     // MAX_POINT_FORCE_LEN == MAX_WIND_FORCE_LEN == 80
@@ -118,6 +122,8 @@ let galleryPristine = false;
 let applyingPreset = false;       // so applyPreset's own setMode/apply calls don't self-invalidate
 
 let lastAutoCaption = "";               // so a later caption never clobbers text you typed
+let vlmEnabled = false;                 // --caption_model "" => no VLM, the prompt box is manual
+let promptExpanding = false;            // a point-force Generate is in flight
 const recvTimes = [], drawTimes = [];
 
 // -------------------------------------------------------------------------- small helpers
@@ -146,6 +152,28 @@ function fpsOf(arr) {
 
 function setStartEnabled() {
   $("startBtn").disabled = imageProcessing || !hasUploadedImage;
+  // Generate needs an image too, so it turns on and off with Start.
+  updateObjectRow();
+}
+
+/** Show and enable the object hint, which belongs to point force only.
+ *
+ * Wind acts on the whole scene, so there is no single object to name and the image alone is
+ * enough to caption -- that path stays fully automatic and this row stays hidden.
+ */
+function updateObjectRow() {
+  const show = vlmEnabled && modeSel.value === "point";
+  objectRowEl.style.display = show ? "" : "none";
+  expandPromptBtnEl.disabled = !show || promptExpanding || imageProcessing || !hasUploadedImage
+                               || !objectInputEl.value.trim();
+  expandPromptBtnEl.textContent = promptExpanding ? "writing…" : "Generate";
+}
+
+/** Forget the hint: it named an object in an image that is no longer loaded. */
+function resetObjectHint() {
+  objectInputEl.value = "";
+  promptExpanding = false;
+  updateObjectRow();
 }
 
 // -------------------------------------------------------------------------- force state (v6)
@@ -227,6 +255,10 @@ function setMode(mode) {
   invalidatePreset();
   modeSel.value = mode;
   modeButtons.forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+  // Clear any in-flight Generate: a result for the other mode would be discarded server-side,
+  // and without this the button would stay stuck in its disabled "writing…" state.
+  promptExpanding = false;
+  updateObjectRow();
   resetForceStateForMode(mode);
   applyForceChange();
 }
@@ -550,13 +582,15 @@ socket.on("status", (m) => {
 socket.on("default_config", (d) => {
   if (d && Number.isFinite(d.seed)) seedInputEl.value = d.seed;
   if (d && Number.isFinite(d.pace_min_buffer)) paceMinBuffer = d.pace_min_buffer;
-  if (d && d.captioner_model) {
+  vlmEnabled = Boolean(d && d.captioner_model);
+  if (vlmEnabled) {
     setCaption(d.captioner_ready ? "idle" : "loading", d.captioner_ready
-      ? "captioner ready — upload an image to fill this in"
-      : `captioner loading (${String(d.captioner_model).split("/").pop()})`);
+      ? "VLM ready — upload an image to fill this in"
+      : `VLM loading (${String(d.captioner_model).split("/").pop()})`);
   } else {
-    setCaption("off", "auto-caption disabled");
+    setCaption("off", "prompt help disabled — write the prompt yourself");
   }
+  updateObjectRow();
 });
 
 socket.on("model_loaded", (d) => {
@@ -704,29 +738,74 @@ socket.on("restart_cutover", (p) => {
 
 function setCaption(state, text) {
   const bar = $("caption-bar");
-  bar.className = "caption-bar" + (state === "working" ? " working" : state === "ready" ? " ready" : state === "error" ? " err" : "");
+  bar.className = "caption-bar" + (state === "working" ? " working" : state === "ready" ? " ready"
+    : state === "error" ? " err" : state === "warn" ? " warn" : "");
   setText("caption-text", text);
 }
 
+// `kind` splits the two jobs: "caption" is the automatic wind path, "expand" is the point path
+// you asked for with Generate. They differ in whether they may overwrite an edited prompt box.
 socket.on("caption_status", (d) => {
-  if (d && d.state === "working") setCaption("working", "captioning the image…");
-  else if (d && d.state === "error") setCaption("error", `caption failed: ${d.error || "?"}`);
+  if (!d) return;
+  const expanding = d.kind === "expand";
+  if (d.state === "working") {
+    setCaption("working", expanding ? "writing the prompt from your hint…" : "captioning the image…");
+  } else if (d.state === "need_hint") {
+    // Point force: the upload alone is not enough to write a prompt, so nothing was generated.
+    setCaption("idle", "name the object the force should move, then press Generate");
+  } else if (d.state === "error") {
+    if (expanding) { promptExpanding = false; updateObjectRow(); }
+    setCaption("error", `${expanding ? "prompt" : "caption"} failed: ${d.error || "?"}`);
+  }
 });
 
 socket.on("caption_ready", (d) => {
-  const caption = (d && d.caption) || "";
-  if (!caption) return;
+  const text = (d && d.caption) || "";
+  const took = (d && d.took_s) || 0;
+  if (d && d.kind === "expand") {
+    // Clear the in-flight flag before the empty-text guard, or Generate stays disabled forever.
+    promptExpanding = false;
+    updateObjectRow();
+    if (!text) return;
+    // You pressed Generate, so this replaces the box even if you had edited it -- unlike the
+    // automatic caption below. Pressing Generate again is the way back, so nothing is lost.
+    promptEl.value = text;
+    lastAutoCaption = text;
+    setCaption("ready", `prompt written in ${took.toFixed(1)}s — edit freely`);
+    pushInput(false);
+    return;
+  }
+  if (!text) return;
   const current = promptEl.value.trim();
   // Only fill an empty box, or replace a caption we put there ourselves -- never clobber
   // a prompt that was typed by hand.
   if (!current || current === lastAutoCaption.trim()) {
-    promptEl.value = caption;
-    lastAutoCaption = caption;
-    setCaption("ready", `auto-captioned in ${(d.took_s || 0).toFixed(1)}s — edit freely`);
+    promptEl.value = text;
+    lastAutoCaption = text;
+    setCaption("ready", `auto-captioned in ${took.toFixed(1)}s — edit freely`);
     pushInput(false);
   } else {
     setCaption("ready", "caption ready but the prompt was edited; left as-is");
   }
+});
+
+// ---- point-force prompt expansion ----------------------------------------------------------
+
+expandPromptBtnEl.onclick = () => {
+  const hint = objectInputEl.value.trim();
+  if (!hint) return message("say which object the force should move", "error");
+  if (!hasUploadedImage) return message("choose an image first", "error");
+  promptExpanding = true;
+  updateObjectRow();
+  // The server already holds the image from set_input, so only the hint goes up.
+  socket.emit("expand_prompt", { object_hint: hint });
+};
+
+objectInputEl.addEventListener("input", updateObjectRow);
+objectInputEl.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();                      // Enter is for Generate, nothing else
+  if (!expandPromptBtnEl.disabled) expandPromptBtnEl.click();
 });
 
 // -------------------------------------------------------------------------- lifecycle
@@ -760,6 +839,13 @@ $("startBtn").onclick = () => {
   if (!hasUploadedImage || !baseImageDataUrl) return message("choose an image first", "error");
   const startSeed = parseInt(seedInputEl.value || "0", 10);
   if (!Number.isFinite(startSeed)) return message("seed must be an integer", "error");
+  // Warn, do not block: an empty prompt is a legitimate thing to try, and the run's own status
+  // messages take over the message line straight away -- so this goes in the caption bar.
+  if (!promptEl.value.trim()) {
+    setCaption("warn", modeSel.value === "point"
+      ? "no prompt: the force has no named object to act on"
+      : "no prompt: generating from the image alone");
+  }
   acceptIncomingFrames = true;
   generating = true;
   setForceControlsEnabled(!galleryPristine);
@@ -942,6 +1028,7 @@ function applyPreset(item) {
     // Assigning .value does not fire the textarea's `change` either. Leaving lastAutoCaption
     // alone means caption_ready treats this as hand-typed and will not overwrite it.
     promptEl.value = item.prompt;
+    resetObjectHint();          // the preset ships a finished prompt; there is nothing to expand
     setCaption("ready", "preset prompt — edit freely");
 
     applyingPreset = false;
@@ -1009,6 +1096,14 @@ $("imageUpload").addEventListener("change", (e) => {
   clipFrames = fullClipFrames;      // back to the server's configured length
   setForceControlsEnabled(true);
   markGalleryActive(null);
+  resetObjectHint();
+  // A prompt the VLM wrote described the PREVIOUS image, so drop it: in point mode nothing
+  // refills the box by itself any more, and a stale prompt left sitting there would also
+  // suppress the "name the object" nudge. A hand-typed prompt is kept, as everywhere else.
+  if (promptEl.value.trim() && promptEl.value.trim() === lastAutoCaption.trim()) {
+    promptEl.value = "";
+    lastAutoCaption = "";
+  }
   acceptIncomingFrames = false;
   generating = false;
   clearPlaybackState(true);

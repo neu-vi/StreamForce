@@ -240,7 +240,7 @@ How the cap is plumbed, and why it is done this way:
   cleanly and the hint is exactly as long as the run
 
 Socket.IO server and streaming generation, plus Qwen3-VL
-auto-captioning from `demo/captioner.py`.
+prompt writing from `demo/captioner.py`.
 
 ```bash
 conda activate streamforce
@@ -257,31 +257,65 @@ weights. `DEVICE=cuda:1` moves the model off GPU 0.
 Default port: 5013 —
 so all three can run at once if the GPUs allow.
 
-## Auto-captioning
+## Writing the prompt
 
-Yes, it's automatic. Choose an image and the caption fills the prompt box by itself:
+A VLM fills the prompt box for you, and **which** VLM call it makes depends on the force mode —
+because the two modes need different text.
+
+### Wind: automatic captioning
+
+Wind acts on the whole scene, so a static description of it plus the force vector is everything
+the generator needs. Choose an image and the caption fills the box by itself:
 
 1. the browser normalises the image to 832x480 JPEG and sends it via `set_input` (v6's flow)
 2. the server sees a new `reference_image_data`, spawns a thread and emits `caption_status`
-   `{state:"working"}` — the dot above the prompt box turns amber
-3. Qwen3-VL captions it, the server emits `caption_ready {caption, took_s}`, the box fills and
-   the dot turns green
+   `{state:"working", kind:"caption"}` — the dot above the prompt box turns amber
+3. Qwen3-VL captions it, the server emits `caption_ready {caption, took_s, kind:"caption"}`, the
+   box fills and the dot turns green
 
-Details worth knowing:
+The captioning instruction asks for the subject, appearance and setting, and explicitly **not**
+motion — because motion is what the force signal is supposed to specify.
 
-* **It never clobbers what you typed.** The caption is only written if the box is empty or still
-  holds the previous auto-caption. Otherwise you get *"caption ready but the prompt was edited;
-  left as-is"*.
-* **Superseded uploads are discarded.** A per-session sequence number means a slow caption for
-  an image you already replaced is dropped rather than pasted over the newer one.
-* **It never blocks the socket.** Captioning runs on its own thread; the VLM takes a second or two.
-* **Disable it** with `CAPTION_MODEL="" ./demo/run.sh`, which turns auto-captioning off
-  entirely. Or point `CAPTION_MODEL` at a local path or a different VLM — anything
-  `transformers` can load through `AutoModelForVision2Seq` works.
+### Point: your hint, expanded
+
+A point force acts on **one object**, so the prompt has to name it — and a caption of the image
+cannot know which one you mean. So point mode does not auto-caption. Instead:
+
+1. upload an image in point mode and the server emits `caption_status {state:"need_hint"}`; the
+   bar reads *"name the object the force should move, then press Generate"*
+2. type a short phrase in the **object** box above the prompt — *"the red vase"* is enough — and
+   press **Generate** (or Enter). The browser emits `expand_prompt {object_hint}`; the image is
+   already on the session, so it is not re-sent
+3. `ImageCaptioner.expand_prompt` grounds your phrase in the image and writes the full prompt:
+   the object named with its real colour, material and position, an unseen external force nudging
+   it, and the rest of the scene explicitly left undisturbed. That is the shape of the point
+   prompts in `assets/gallery.json`, i.e. what the generator was trained on
+4. the server emits `caption_ready {caption, took_s, kind:"expand"}` and the box fills
+
+The hint is a *starting point*, not a constraint: edit the generated prompt however you like, or
+ignore the box entirely and write the whole prompt by hand.
+
+### Details worth knowing
+
+* **An automatic caption never clobbers what you typed.** It is only written if the box is empty
+  or still holds the previous VLM output. Otherwise you get *"caption ready but the prompt was
+  edited; left as-is"*.
+* **Generate does overwrite the box**, edits included — you asked for it by pressing the button,
+  and pressing it again is the way back, so nothing is lost for good.
+* **A new upload drops a prompt the VLM wrote**, since it described the previous image, but keeps
+  one you typed by hand.
+* **Superseded requests are discarded.** A per-session sequence number means a slow result for an
+  image or hint you already replaced is dropped rather than pasted over the newer one.
+* **It never blocks the socket.** Both calls run on their own thread; the VLM takes a second or two.
+* **An empty prompt does not block Start.** You get a warning in the bar above the box and the run
+  goes ahead.
+* **Disable it** with `CAPTION_MODEL="" ./demo/run.sh`, which turns both paths off and hides the
+  object box, leaving the prompt fully manual. Or point `CAPTION_MODEL` at a local path or a
+  different VLM — anything `transformers` can load through `AutoModelForVision2Seq` works.
 * **The default is `Qwen/Qwen3-VL-8B-Instruct`** (~18 GB in bf16). It is pulled from the Hub on
-  first run, so the first launch with captioning on is slow.
-* The prompt used for captioning asks for the subject, appearance and setting, and explicitly
-  **not** motion — because motion is what the force signal is supposed to specify.
+  first run, so the first launch with the VLM on is slow.
+* **Gallery presets ship a finished prompt** and leave the object box empty; there is nothing to
+  expand.
 
 `CUDA_VISIBLE_DEVICES` defaults to `0,1`: the model takes one card, and the captioner loads with
 `device_map=auto` before it, so the second card keeps the VLM from crowding the generator. Pin it
@@ -289,8 +323,9 @@ explicitly with `CAPTION_DEVICE=cuda:1 DEVICE=cuda:0` if you prefer.
 
 ## Layout
 
-`demo/`'s arrangement: header with model + transport pills, a left control panel (image, prompt,
-mode, force fields, seed, start/stop) and a right panel with the canvas and a stats row.
+`demo/`'s arrangement: header with model + transport pills, a left control panel (image, object
+hint + prompt, mode, force fields, seed, start/stop) and a right panel with the canvas and a stats
+row. The object hint row is shown in point mode only.
 
 The canvas keeps **v6's interaction contract** exactly, because the server derives
 force/angle/x_pos/y_pos from it:
